@@ -954,15 +954,23 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
 
     return f_grad_shared, f_update
 
+def convert_back_to_words(arr, reverse_dict):
+    ret = []
+    for vv in arr:
+        if vv == 0:
+            break
+        if vv in reverse_dict:
+            ret.append(reverse_dict[vv])
+        else:
+            ret.append('UNK')
+    return ''.join(ret)
 
-def train(dim_word=100,  # word vector dimensionality
+
+
+def setup(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
           encoder='gru',
           decoder='gru_cond',
-          patience=10,  # early stopping patience
-          max_epochs=5000,
-          finish_after=10000000,  # finish after this many updates
-          dispFreq=100,
           decay_c=0.,  # L2 regularization penalty
           alpha_c=0.,  # alignment regularization
           clip_c=-1.,  # gradient clipping threshold
@@ -974,9 +982,6 @@ def train(dim_word=100,  # word vector dimensionality
           batch_size=16,
           valid_batch_size=16,
           saveto='model.npz',
-          validFreq=1000,
-          saveFreq=1000,  # save the parameters after every saveFreq updates
-          sampleFreq=100,  # generate some samples after every sampleFreq
           datasets=[
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'],
@@ -986,8 +991,8 @@ def train(dim_word=100,  # word vector dimensionality
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok.pkl',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok.pkl'],
           use_dropout=False,
-          reload_=False):
-
+          reload_=False,
+          **_kwargs):
     # Model options
     model_options = locals().copy()
 
@@ -1003,6 +1008,7 @@ def train(dim_word=100,  # word vector dimensionality
 
     # reload options
     if reload_ and os.path.exists(saveto):
+        print 'Loading options from pkl', saveto
         with open('%s.pkl' % saveto, 'rb') as f:
             models_options = pkl.load(f)
 
@@ -1022,6 +1028,7 @@ def train(dim_word=100,  # word vector dimensionality
     params = init_params(model_options)
     # reload parameters
     if reload_ and os.path.exists(saveto):
+        print 'Loading params from pkl', saveto
         params = load_params(saveto, params)
 
     tparams = init_tparams(params)
@@ -1093,22 +1100,92 @@ def train(dim_word=100,  # word vector dimensionality
     # reload history
     if reload_ and os.path.exists(saveto):
         history_errs = list(numpy.load(saveto)['history_errs'])
+    return (model_options, use_noise, trng, worddicts_r, tparams,
+            f_grad_shared, f_update, f_init, f_next, f_log_probs,
+            history_errs,
+            train, valid)
+
+
+def test(**kwargs):
+    (model_options, use_noise, trng, worddicts_r, tparams,
+     _f_grad_shared, _f_update, f_init, f_next, _f_log_probs,
+     _history_errs,
+     train_data, valid_data) = setup(**kwargs)
+    maxlen = kwargs['maxlen']
+    n_words_src=kwargs['n_words_src']
+    n_words = kwargs['n_words']
+
+    stochastic = True
+    outputs = []
+    for dataset in [train_data, valid_data]:
+        output = []
+        correct = 0.0
+        total = 0.0
+        for x, y in dataset:
+            # x,y are batches.
+            use_noise.set_value(0.)
+            x, x_mask, y, y_mask = prepare_data(
+                x, y, maxlen=maxlen, n_words_src=n_words_src, n_words=n_words)
+            for jj in xrange(x.shape[1]):
+                sample, score = gen_sample(
+                    tparams, f_init, f_next,
+                    x[:, jj][:, None],
+                    model_options, trng=trng, k=1,
+                    maxlen=30,
+                    stochastic=stochastic,
+                    argmax=False)
+                ss = (sample
+                      if stochastic
+                      else sample[
+                              (score / numpy.array([len(s) for s in sample])
+                              ).argmin()])
+                source = convert_back_to_words(x[:, jj], worddicts_r[0])
+                truth = convert_back_to_words(y[:, jj], worddicts_r[1])
+                sample = convert_back_to_words(ss, worddicts_r[1])
+                output.append((source, truth, sample))
+                correct += (truth == sample)
+                total += 1
+                pass
+            pass
+        print correct / total
+        outputs.append(output)
+        pass
+    return
+
+def train(patience=10,  # early stopping patience
+          max_epochs=500,
+          finish_after=10000000,  # finish after this many updates
+          dispFreq=100,
+          validFreq=1000,
+          saveFreq=1000,  # save the parameters after every saveFreq updates
+          sampleFreq=100,  # generate some samples after every sampleFreq
+          **kwargs):
+    (model_options, use_noise, trng, worddicts_r, tparams,
+     f_grad_shared, f_update, f_init, f_next, f_log_probs,
+     history_errs,
+     train_data, valid) = setup(**kwargs)
+    maxlen = kwargs['maxlen']
+    n_words_src=kwargs['n_words_src']
+    n_words = kwargs['n_words']
+    lrate = kwargs['lrate']
+    saveto = kwargs['saveto']
+    batch_size = kwargs['batch_size']
     best_p = None
     bad_count = 0
 
     if validFreq == -1:
-        validFreq = len(train[0])/batch_size
+        validFreq = len(train_data[0])/batch_size
     if saveFreq == -1:
-        saveFreq = len(train[0])/batch_size
+        saveFreq = len(train_data[0])/batch_size
     if sampleFreq == -1:
-        sampleFreq = len(train[0])/batch_size
+        sampleFreq = len(train_data[0])/batch_size
 
     uidx = 0
     estop = False
     for eidx in xrange(max_epochs):
         n_samples = 0
 
-        for x, y in train:
+        for x, y in train_data:
             n_samples += len(x)
             uidx += 1
             use_noise.set_value(1.)
@@ -1165,38 +1242,18 @@ def train(dim_word=100,  # word vector dimensionality
                                                maxlen=30,
                                                stochastic=stochastic,
                                                argmax=False)
-                    print 'Source ', jj, ': ',
-                    for vv in x[:, jj]:
-                        if vv == 0:
-                            break
-                        if vv in worddicts_r[0]:
-                            print worddicts_r[0][vv],
-                        else:
-                            print 'UNK',
-                    print
-                    print 'Truth ', jj, ' : ',
-                    for vv in y[:, jj]:
-                        if vv == 0:
-                            break
-                        if vv in worddicts_r[1]:
-                            print worddicts_r[1][vv],
-                        else:
-                            print 'UNK',
-                    print
-                    print 'Sample ', jj, ': ',
-                    if stochastic:
-                        ss = sample
-                    else:
-                        score = score / numpy.array([len(s) for s in sample])
-                        ss = sample[score.argmin()]
-                    for vv in ss:
-                        if vv == 0:
-                            break
-                        if vv in worddicts_r[1]:
-                            print worddicts_r[1][vv],
-                        else:
-                            print 'UNK',
-                    print
+                    print 'Source ', jj, ': ', convert_back_to_words(
+                        x[:, jj], worddicts_r[0])
+
+                    print 'Truth ', jj, ' : ', convert_back_to_words(
+                        y[:, jj], worddicts_r[1])
+                    ss = (sample
+                          if stochastic
+                          else sample[
+                                  (score / numpy.array([len(s) for s in sample])
+                                  ).argmin()])
+                    print 'Sample ', jj, ': ', convert_back_to_words(
+                        ss, worddicts_r[1])
 
             # validate model on validation set and early stop if necessary
             if numpy.mod(uidx, validFreq) == 0:

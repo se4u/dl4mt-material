@@ -1,49 +1,63 @@
-import numpy
-import os
+#!/usr/bin/env python
+from nmt import train, test
+#-------------------#
+# Dataset Creation. #
+#-------------------#
+# train = TextIterator(datasets[0], datasets[1],
+# data_iterator.TextIterator
+# def next()
+#   read from source file and map to word index
+#   source.append(ss)
+#   target.append(tt)
+#   return source, target
+#   ss = self.source.readline()
+#   If there is an empty line then set end_of_data = True
+#     if ss == "": raise IOError except IOError: self.end_of_data = True
+#   Now Strip and split ss
+#   Now map
+#   ss = [(self.source_dict[w] if w in self.source_dict else 1)
+#          for w in ss]
+# Basically 1 is the index of OOV token.
+DATASETS = ['lower_string.train.tok',
+            'upper_string.train.tok']
+VALID_DATASETS = ['lower_string.dev.tok',
+                  'upper_string.dev.tok']
+#----------------------#
+# Dictionary Creation. #
+#----------------------#
+DICTIONARIES = ['dict.pkl', 'dict.pkl']
 
-from nmt import train
-
-def main(job_id, params):
-    print params
-    basedir = '/data/lisatmp3/firatorh/nmt/europarlv7'
-    validerr = train(saveto=params['model'][0],
-                                        reload_=params['reload'][0],
-                                        dim_word=params['dim_word'][0],
-                                        dim=params['dim'][0],
-                                        n_words=params['n-words'][0],
-                                        n_words_src=params['n-words'][0],
-                                        decay_c=params['decay-c'][0],
-                                        clip_c=params['clip-c'][0],
-                                        lrate=params['learning-rate'][0],
-                                        optimizer=params['optimizer'][0],
-                                        maxlen=15,
-                                        batch_size=32,
-                                        valid_batch_size=32,
-					datasets=['%s/europarl-v7.fr-en.fr.tok'%basedir,
-					'%s/europarl-v7.fr-en.en.tok'%basedir],
-					valid_datasets=['%s/newstest2011.fr.tok'%basedir,
-					'%s/newstest2011.en.tok'%basedir],
-					dictionaries=['%s/europarl-v7.fr-en.fr.tok.pkl'%basedir,
-					'%s/europarl-v7.fr-en.en.tok.pkl'%basedir],
-                                        validFreq=500000,
-                                        dispFreq=1,
-                                        saveFreq=100,
-                                        sampleFreq=50,
-                                        use_dropout=params['use-dropout'][0])
+def main(do_test):
+    n_words = 28
+    f = test if do_test else train
+    validerr = f(saveto='model_session3.npz',
+                 reload_=(do_test),
+                 dim_word=150,
+                 dim=124,
+                 n_words=n_words,
+                 n_words_src=n_words,
+                 decay_c=0.,
+                 clip_c=1.,
+                 lrate=1e-4,
+                 optimizer='adadelta',
+                 maxlen=25,
+                 batch_size=32,
+                 valid_batch_size=32,
+                 datasets=DATASETS,
+                 valid_datasets=VALID_DATASETS,
+                 dictionaries=DICTIONARIES,
+                 validFreq=500000,
+                 dispFreq=10,
+                 saveFreq=100,
+                 sampleFreq=500,
+                 use_dropout=True or (not do_test))
     return validerr
 
 if __name__ == '__main__':
-    basedir = '/data/lisatmp3/firatorh/nmt/europarlv7'
-    main(0, {
-        'model': ['%s/models/model_session3.npz'%basedir],
-        'dim_word': [150],
-        'dim': [124],
-        'n-words': [3000],
-        'optimizer': ['adadelta'],
-        'decay-c': [0.],
-        'clip-c': [1.],
-        'use-dropout': [False],
-        'learning-rate': [0.0001],
-        'reload': [False]})
-
-
+    import sys
+    if len(sys.argv) > 1:
+        assert sys.argv[1] == '--test'
+        main(True)
+    else:
+        main(False)
+        main(True)
