@@ -1150,7 +1150,7 @@ def test(**kwargs):
         print correct / total
         outputs.append(output)
         pass
-    return
+    return outputs
 
 def train(patience=10,  # early stopping patience
           max_epochs=500,
