@@ -19,27 +19,34 @@
 # Basically 1 is the index of OOV token.
 import rasengan
 
-DATASETS = ['lower_string.train.tok',
-            'upper_string.train.tok']
-VALID_DATASETS = ['lower_string.dev.tok',
-                  'upper_string.dev.tok']
+
 #----------------------#
 # Dictionary Creation. #
 #----------------------#
-DICTIONARIES = ['dict.pkl', 'dict.pkl']
 
-def main(do_test=0, use_dropout=0, reload_=0):
-    saveto = 'model_session3_use_dropout=%s.npz'%str(use_dropout)
-    print 'saveto', saveto, 'reload_', reload_
-    if do_test:
+def main(args):
+    DATASETS = ['lower_string.train.tok',
+                'upper_string.train.tok']
+    VALID_DATASETS = ['lower_string.dev.tok',
+                      'upper_string.dev.tok']
+    DICTIONARIES = ['dict.pkl', 'dict.pkl']
+    saveto = 'model_session3_use_dropout=%s.npz'%str(args.use_dropout)
+    if args.prefix is not None:
+        prefix_adder = lambda arr: [args.prefix + '.' + e for e in arr]
+        DATASETS = prefix_adder(DATASETS)
+        VALID_DATASETS = prefix_adder(VALID_DATASETS)
+        DICTIONARIES = prefix_adder(DICTIONARIES)
+        saveto = args.prefix + '.' + saveto
+    print 'saveto', saveto
+    if args.do_test:
         from nmt import test
         f = test
     else:
         from nmt import train
         f = train
     validerr = f(saveto=saveto,
-                 reload_=reload_, # Remove saveto to disable reloading
-                 use_dropout=use_dropout,
+                 reload_=args.reload_, # Remove saveto to disable reloading
+                 use_dropout=args.use_dropout,
                  dim_word=150,
                  dim=124,
                  n_words=28, n_words_src=28,
@@ -64,10 +71,12 @@ if __name__ == '__main__':
     import argparse
     arg_parser = argparse.ArgumentParser(description='')
     arg_parser.add_argument('--test', default=0, type=int, help='Default={0}')
-    arg_parser.add_argument('--dropout', default=0, type=int, help='Default={0}')
+    arg_parser.add_argument('--use_dropout', default=0, type=int, help='Default={0}')
     arg_parser.add_argument('--reload_', default=0, type=int, help='Default={0}')
-    args=arg_parser.parse_args()
+    arg_parser.add_argument('--prefix', default=None, type=str, help='Default={None}')
+    _args=arg_parser.parse_args()
     with rasengan.debug_support():
-        main(args.test, args.dropout)
+        main(_args)
         if not args.test:
-            main(True, args.dropout)
+            args.test = True
+            main(args)
