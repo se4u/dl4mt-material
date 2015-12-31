@@ -47,6 +47,7 @@ def main(args):
     validerr = f(saveto=saveto,
                  reload_=args.reload_, # Remove saveto to disable reloading
                  use_dropout=args.use_dropout,
+                 max_epochs=args.max_epochs,
                  dim_word=150,
                  dim=124,
                  n_words=28, n_words_src=28,
@@ -70,13 +71,14 @@ def main(args):
 if __name__ == '__main__':
     import argparse
     arg_parser = argparse.ArgumentParser(description='')
-    arg_parser.add_argument('--test', default=0, type=int, help='Default={0}')
+    arg_parser.add_argument('--do_test', default=0, type=int, help='Default={0}')
     arg_parser.add_argument('--use_dropout', default=0, type=int, help='Default={0}')
     arg_parser.add_argument('--reload_', default=0, type=int, help='Default={0}')
     arg_parser.add_argument('--prefix', default=None, type=str, help='Default={None}')
+    arg_parser.add_argument('--max_epochs', default=550, type=int, help='Default={550}')
     _args=arg_parser.parse_args()
     with rasengan.debug_support():
         main(_args)
-        if not args.test:
-            args.test = True
-            main(args)
+        if not _args.do_test:
+            _args.do_test = True
+            main(_args)

@@ -66,6 +66,8 @@ def init_tparams(params):
 
 # load parameters
 def load_params(path, params):
+    import ipdb as pdb
+    pdb.set_trace()
     pp = numpy.load(path)
     for kk, vv in params.iteritems():
         if kk not in pp:
@@ -1251,18 +1253,17 @@ def train(dim_word=100,  # word vector dimensionality
                     ipdb.set_trace()
 
                 print 'Valid ', valid_err
-                print ('Train Acc',
-                       get_equality_acc_dataset(
-                           [e for i, e in enumerate(train) if i < 5],
-                           use_noise, model_options, tparams,
-                           f_init, f_next, trng, worddicts_r,
-                           stochastic=True, print_=True), \
-                       'Dev Acc',
-                       get_equality_acc_dataset(
-                           [e for i, e in enumerate(valid) if i < 5],
-                           use_noise, model_options, tparams,
-                           f_init, f_next, trng, worddicts_r,
-                           stochastic=True, print_=True))
+                train_acc = get_equality_acc_dataset(
+                    [e for i, e in enumerate(train) if i < 5],
+                    use_noise, model_options, tparams,
+                    f_init, f_next, trng, worddicts_r,
+                    stochastic=True, print_=True)
+                dev_acc = get_equality_acc_dataset(
+                    [e for i, e in enumerate(valid) if i < 5],
+                    use_noise, model_options, tparams,
+                    f_init, f_next, trng, worddicts_r,
+                    stochastic=True, print_=True)
+                print ('Train Acc', train_acc, 'Dev Acc', dev_acc)
             # finish after this many updates
             if uidx >= finish_after:
                 print 'Finishing after %d iterations!' % uidx
@@ -1283,22 +1284,17 @@ def train(dim_word=100,  # word vector dimensionality
 
     print 'Valid ', valid_err
 
-    print ('Train Acc',
-           get_equality_acc_dataset(
-               train, use_noise, model_options, tparams,
-               f_init, f_next, trng, worddicts_r,
-               stochastic=True, print_=False), \
-           'Dev Acc',
-           get_equality_acc_dataset(
-               valid, use_noise, model_options, tparams,
-               f_init, f_next, trng, worddicts_r,
-               stochastic=True, print_=False))
+    train_acc =get_equality_acc_dataset(
+        train, use_noise, model_options, tparams,
+        f_init, f_next, trng, worddicts_r,
+        stochastic=True, print_=True)
 
-    params = copy.copy(best_p)
-    numpy.savez(saveto, zipped_params=best_p,
-                history_errs=history_errs,
-                **params)
+    dev_acc =get_equality_acc_dataset(
+        valid, use_noise, model_options, tparams,
+        f_init, f_next, trng, worddicts_r,
+        stochastic=True, print_=True)
 
+    print ('Final Train Acc', train_acc, 'Dev Acc', dev_acc)
     return valid_err
 
 
