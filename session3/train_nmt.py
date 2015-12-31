@@ -17,6 +17,8 @@
 #   ss = [(self.source_dict[w] if w in self.source_dict else 1)
 #          for w in ss]
 # Basically 1 is the index of OOV token.
+import rasengan
+
 DATASETS = ['lower_string.train.tok',
             'upper_string.train.tok']
 VALID_DATASETS = ['lower_string.dev.tok',
@@ -26,9 +28,9 @@ VALID_DATASETS = ['lower_string.dev.tok',
 #----------------------#
 DICTIONARIES = ['dict.pkl', 'dict.pkl']
 
-def main(do_test=0, use_dropout=0):
+def main(do_test=0, use_dropout=0, reload_=0):
     saveto = 'model_session3_use_dropout=%s.npz'%str(use_dropout)
-    print saveto
+    print 'saveto', saveto, 'reload_', reload_
     if do_test:
         from nmt import test
         f = test
@@ -36,7 +38,7 @@ def main(do_test=0, use_dropout=0):
         from nmt import train
         f = train
     validerr = f(saveto=saveto,
-                 reload_=True, # Remove saveto to disable reloading
+                 reload_=reload_, # Remove saveto to disable reloading
                  use_dropout=use_dropout,
                  dim_word=150,
                  dim=124,
@@ -63,7 +65,9 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser(description='')
     arg_parser.add_argument('--test', default=0, type=int, help='Default={0}')
     arg_parser.add_argument('--dropout', default=0, type=int, help='Default={0}')
+    arg_parser.add_argument('--reload_', default=0, type=int, help='Default={0}')
     args=arg_parser.parse_args()
-    main(args.test, args.dropout)
-    if not args.test:
-        main(True, args.dropout)
+    with rasengan.debug_support():
+        main(args.test, args.dropout)
+        if not args.test:
+            main(True, args.dropout)

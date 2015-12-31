@@ -955,6 +955,75 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
     return f_grad_shared, f_update
 
 
+def convert_back_to_words(arr, reverse_dict):
+    ret = []
+    for vv in arr:
+        if vv == 0:
+            break
+        if vv in reverse_dict:
+            ret.append(reverse_dict[vv])
+        else:
+            ret.append('UNK')
+    return ''.join(ret)
+
+def get_equality_acc(x, y,
+                     model_options, tparams,
+                     f_init, f_next,
+                     trng,
+                     worddicts_r,
+                     stochastic = True,
+                     print_=False):
+    ret_arr = []
+    for jj in xrange(x.shape[1]):
+        sample, score = gen_sample(tparams, f_init, f_next,
+                                   x[:, jj][:, None],
+                                   model_options, trng=trng, k=1,
+                                   maxlen=30,
+                                   stochastic=stochastic,
+                                   argmax=False)
+        source = convert_back_to_words(x[:, jj], worddicts_r[0])
+        truth = convert_back_to_words(y[:, jj], worddicts_r[1])
+        if stochastic:
+            ss = sample
+        else:
+            score = score / numpy.array([len(s) for s in sample])
+            ss = sample[score.argmin()]
+        sample=convert_back_to_words(ss, worddicts_r[1])
+        ret_arr.append((source, truth, sample))
+        if print_:
+            print jj, 'source', source, 'truth', truth, 'sample', sample
+        pass
+    return ret_arr
+
+
+def get_equality_acc_dataset(data, use_noise,
+                             model_options, tparams,
+                             f_init, f_next,
+                             trng,
+                             worddicts_r,
+                             stochastic=True,
+                             print_=False):
+    retarr = []
+    use_noise.set_value(0.)
+    for x, y in data:
+        x, x_mask, y, y_mask = prepare_data(
+            x, y,
+            n_words_src=model_options['n_words_src'],
+            n_words=model_options['n_words'])
+        batch_acc = get_equality_acc(x, y,
+                                     model_options, tparams,
+                                     f_init, f_next,
+                                     trng,
+                                     worddicts_r,
+                                     stochastic=stochastic,
+                                     print_=print_)
+        retarr.extend(batch_acc)
+        pass
+    acc = float(sum(e[1] == e[2] for e in retarr))/len(retarr)
+    return acc
+
+
+
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
           encoder='gru',
@@ -977,14 +1046,9 @@ def train(dim_word=100,  # word vector dimensionality
           validFreq=1000,
           saveFreq=1000,  # save the parameters after every saveFreq updates
           sampleFreq=100,  # generate some samples after every sampleFreq
-          datasets=[
-              '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
-              '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'],
-          valid_datasets=['../data/dev/newstest2011.en.tok',
-                          '../data/dev/newstest2011.fr.tok'],
-          dictionaries=[
-              '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok.pkl',
-              '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok.pkl'],
+          datasets=None,
+          valid_datasets=None,
+          dictionaries=None,
           use_dropout=False,
           reload_=False):
 
@@ -1157,46 +1221,12 @@ def train(dim_word=100,  # word vector dimensionality
             # generate some samples with the model and display them
             if numpy.mod(uidx, sampleFreq) == 0:
                 # FIXME: random selection?
-                for jj in xrange(numpy.minimum(5, x.shape[1])):
-                    stochastic = True
-                    sample, score = gen_sample(tparams, f_init, f_next,
-                                               x[:, jj][:, None],
-                                               model_options, trng=trng, k=1,
-                                               maxlen=30,
-                                               stochastic=stochastic,
-                                               argmax=False)
-                    print 'Source ', jj, ': ',
-                    for vv in x[:, jj]:
-                        if vv == 0:
-                            break
-                        if vv in worddicts_r[0]:
-                            print worddicts_r[0][vv],
-                        else:
-                            print 'UNK',
-                    print
-                    print 'Truth ', jj, ' : ',
-                    for vv in y[:, jj]:
-                        if vv == 0:
-                            break
-                        if vv in worddicts_r[1]:
-                            print worddicts_r[1][vv],
-                        else:
-                            print 'UNK',
-                    print
-                    print 'Sample ', jj, ': ',
-                    if stochastic:
-                        ss = sample
-                    else:
-                        score = score / numpy.array([len(s) for s in sample])
-                        ss = sample[score.argmin()]
-                    for vv in ss:
-                        if vv == 0:
-                            break
-                        if vv in worddicts_r[1]:
-                            print worddicts_r[1][vv],
-                        else:
-                            print 'UNK',
-                    print
+                get_equality_acc(x[:, :5], y[:, :5],
+                                 model_options, tparams,
+                                 f_init, f_next,
+                                 trng,
+                                 worddicts_r,
+                                 print_=True)
 
             # validate model on validation set and early stop if necessary
             if numpy.mod(uidx, validFreq) == 0:
@@ -1221,7 +1251,18 @@ def train(dim_word=100,  # word vector dimensionality
                     ipdb.set_trace()
 
                 print 'Valid ', valid_err
-
+                print ('Train Acc',
+                       get_equality_acc_dataset(
+                           [e for i, e in enumerate(train) if i < 5],
+                           use_noise, model_options, tparams,
+                           f_init, f_next, trng, worddicts_r,
+                           stochastic=True, print_=True), \
+                       'Dev Acc',
+                       get_equality_acc_dataset(
+                           [e for i, e in enumerate(valid) if i < 5],
+                           use_noise, model_options, tparams,
+                           f_init, f_next, trng, worddicts_r,
+                           stochastic=True, print_=True))
             # finish after this many updates
             if uidx >= finish_after:
                 print 'Finishing after %d iterations!' % uidx
@@ -1241,6 +1282,17 @@ def train(dim_word=100,  # word vector dimensionality
                            model_options, valid).mean()
 
     print 'Valid ', valid_err
+
+    print ('Train Acc',
+           get_equality_acc_dataset(
+               train, use_noise, model_options, tparams,
+               f_init, f_next, trng, worddicts_r,
+               stochastic=True, print_=False), \
+           'Dev Acc',
+           get_equality_acc_dataset(
+               valid, use_noise, model_options, tparams,
+               f_init, f_next, trng, worddicts_r,
+               stochastic=True, print_=False))
 
     params = copy.copy(best_p)
     numpy.savez(saveto, zipped_params=best_p,
